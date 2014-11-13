@@ -1,0 +1,90 @@
+#!/bin/bash
+########################################
+#                                      #
+# From:	   Robert Bruckmueller         #
+# Email:   admin@mediadelivery.de      #
+# Web:     mediadelivery.de            #
+# Version: 1.5.0                       #
+# Date:    08.11.14                    #
+# File:    apt-check.config            #
+# License: GPL v3                      #
+# http://www.gnu.org/copyleft/gpl.html #
+#                                      #
+########################################
+# Changelog
+# v1.0: erste verion
+# v1.1: debug hinzugefuegt
+# v1.2: es wir nur noch eine Email gesendet wenn es neue Updates gibt und keine neuene seit der letzten email hionzugekommen sind
+# v1.3: wenn kein emailuser eingetragen wir der mutt befehl angepasst
+# v1.4: starttls hinzugefügt
+# v1.4.1: Small Bug Fix
+# v1.4.2: Email From Problem fix
+# v1.5.0: add Config File
+
+################################
+#                              #
+# Config at apt-check.config   #
+#                              #
+################################
+
+source apt-check.config
+
+if [ $1 ]
+then
+	logdebug=true
+else
+	logdebug=false
+fi
+
+if [ -z $emailuser ]
+then
+	emailcom='mutt -e "set from=$emailfrom" -e "set smtp_url=\"smtp://${emailsmtp}:${emailport}\"" -e "set ssl_starttls=$emailtls"'
+else
+	emailcom='mutt -e "set from=$emailfrom" -e "set smtp_url=\"smtps://${emailuser}@${emailsmtp}:${emailport}\"" -e "set ssl_starttls=$emailtls" -e "set smtp_pass=$emailpass"'
+fi
+
+if [ -f /tmp/apt-check.tmp ]
+then
+	oldanz=`cat /tmp/apt-check.tmp`
+else
+	oldanz=0
+fi
+
+if apt-get update -qq
+then
+        anz=`apt-get upgrade -V --assume-no | tail -n+5 | wc -l`
+        if [ $anz -gt 0 ] && [ $anz != $oldanz ]
+        then
+                if  [ $logdebug = true ]  
+                then 
+                        echo "Es stehen Updates auf dem System `hostname -f` zur Verfuegung" 
+                fi
+                echo "Es stehen folgende Updates auf dem System `hostname -f` zur Verfuegung:" > /tmp/apt-check
+
+                apt-get upgrade -V --assume-no | tail -n+5 | head -n-2 >> /tmp/apt-check
+		$emailcom -s "APT-Check: Updates fuer `hostname -f`" -- $emailto < /tmp/apt-check
+                rm /tmp/apt-check
+		echo $anz > /tmp/apt-check.tmp
+	elif [ $logdebug = true ] && [ $anz == $oldanz ]
+	then
+		echo "Updaes Verfuegbar eine Email wurde bereits gesendet"
+        else
+                if [ $logdebug = true ]
+                then 
+                        echo "Keine Updates" 
+                fi
+                exit 0
+        fi
+else
+	if [ $logdebug = true ] && [ $anz != $oldanz ]
+	then
+		echo "Keine Neuen Updates"
+	
+	else
+		if [ $logdebug = true ]
+		then 
+		        echo "apt-get update Fehler" 
+		fi
+	$emailcom -s "APT-Check: Fehler auf `hostname -f`" $emailto <<< "Es ist ein Fehler bei apt-get update aufgetreten!"
+	fi
+fi
