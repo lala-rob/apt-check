@@ -4,22 +4,12 @@
 # From:	   Robert Bruckmueller         #
 # Email:   admin@mediadelivery.de      #
 # Web:     mediadelivery.de            #
-# Version: 1.5.0                       #
-# Date:    08.11.14                    #
-# File:    apt-check.config            #
+# Version: 1.6.0                       #
+# Date:    14.11.14                    #
 # License: GPL v3                      #
 # http://www.gnu.org/copyleft/gpl.html #
 #                                      #
 ########################################
-# Changelog
-# v1.0: erste verion
-# v1.1: debug hinzugefuegt
-# v1.2: es wir nur noch eine Email gesendet wenn es neue Updates gibt und keine neuene seit der letzten email hionzugekommen sind
-# v1.3: wenn kein emailuser eingetragen wir der mutt befehl angepasst
-# v1.4: starttls hinzugefügt
-# v1.4.1: Small Bug Fix
-# v1.4.2: Email From Problem fix
-# v1.5.0: add Config File
 
 ################################
 #                              #
@@ -29,19 +19,71 @@
 
 source apt-check.config
 
+hash mutt 2>/dev/null || { echo >&2 "I require mutt but it's not installed.  Aborting."; exit 1; }
+
 if [ $1 ]
 then
 	logdebug=true
 else
 	logdebug=false
 fi
+servername=`hostname -f`
+senemail() {
+	betreff=$1
+	body=$2
+	if [ $body = "yes" ]
+	then
+		attach=true
+	fi
+	if [ -z $attach ]
+	then
+		if [ -z $emailuser ]
+		then
+			if mutt -e "set smtp_url=smtp://${emailsmtp}:${emailport}" -e "set ssl_starttls=$emailtls" -e "set from=$emailfrom" -s "$betreff" -- $emailto <<< "$body"
+			then
+				debugpost "Email wurde gesendet."
+			else
+				echo "Es gab ein Problem mit mutt. Bitte Prüfen Sie die Config."
+				exit 1
+			fi
+		else
+		    if mutt -e "set smtp_url=smtp://${emailuser}@${emailsmtp}:${emailport}" -e "set ssl_starttls=$emailtls" -e "set smtp_pass=$emailpass" -e "set from=$emailfrom" -s "$betreff" -- $emailto <<< "$body"
+			then
+				debugpost "Email wurde gesendet."
+			else
+				echo "Es gab ein Problem mit mutt. Bitte Prüfen Sie die Config."
+				exit 1
+			fi
+		fi
+	else
+		if [ -z $emailuser ]
+		then
+        	if mutt -e "set smtp_url=smtp://${emailsmtp}:${emailport}" -e "set ssl_starttls=$emailtls" -e "set from=$emailfrom" -s "$betreff" -- $emailto < /tmp/apt-check
+        	then
+				debugpost "Email wurde gesendet."
+			else
+				echo "Es gab ein Problem mit mutt. Bitte Prüfen Sie die Config."
+				exit 1
+			fi
+		else
+        	if mutt -e "set smtp_url=smtp://${emailuser}@${emailsmtp}:${emailport}" -e "set ssl_starttls=$emailtls" -e "set smtp_pass=$emailpass" -e "set from=$emailfrom" -s "$betreff" -- $emailto < /tmp/apt-check 
+        	then
+				debugpost "Email wurde gesendet."
+			else
+				echo "Es gab ein Problem mit mutt. Bitte Prüfen Sie die Config."
+				exit 1
+			fi
+		fi
+	fi
+}
 
-if [ -z $emailuser ]
-then
-	emailcom='mutt -e "set from=$emailfrom" -e "set smtp_url=\"smtp://${emailsmtp}:${emailport}\"" -e "set ssl_starttls=$emailtls"'
-else
-	emailcom='mutt -e "set from=$emailfrom" -e "set smtp_url=\"smtps://${emailuser}@${emailsmtp}:${emailport}\"" -e "set ssl_starttls=$emailtls" -e "set smtp_pass=$emailpass"'
-fi
+debugpost(){
+	text=$1
+	if [ $logdebug = true ]
+    then
+    	echo $text
+    fi
+}
 
 if [ -f /tmp/apt-check.tmp ]
 then
@@ -55,36 +97,22 @@ then
         anz=`apt-get upgrade -V --assume-no | tail -n+5 | wc -l`
         if [ $anz -gt 0 ] && [ $anz != $oldanz ]
         then
-                if  [ $logdebug = true ]  
-                then 
-                        echo "Es stehen Updates auf dem System `hostname -f` zur Verfuegung" 
-                fi
-                echo "Es stehen folgende Updates auf dem System `hostname -f` zur Verfuegung:" > /tmp/apt-check
+                debugpost "Es stehen Updates auf dem System $servername zur Verfuegung" 
+                echo "Es stehen folgende Updates auf dem System $servername zur Verfuegung:" > /tmp/apt-check
 
                 apt-get upgrade -V --assume-no | tail -n+5 | head -n-2 >> /tmp/apt-check
-		$emailcom -s "APT-Check: Updates fuer `hostname -f`" -- $emailto < /tmp/apt-check
+                senemail "APT-Check: Updates fuer $servername" "yes"
                 rm /tmp/apt-check
-		echo $anz > /tmp/apt-check.tmp
-	elif [ $logdebug = true ] && [ $anz == $oldanz ]
-	then
-		echo "Updaes Verfuegbar eine Email wurde bereits gesendet"
-        else
-                if [ $logdebug = true ]
-                then 
-                        echo "Keine Updates" 
-                fi
-                exit 0
-        fi
-else
-	if [ $logdebug = true ] && [ $anz != $oldanz ]
-	then
-		echo "Keine Neuen Updates"
-	
-	else
-		if [ $logdebug = true ]
-		then 
-		        echo "apt-get update Fehler" 
+				echo $anz > /tmp/apt-check.tmp
+		elif [ $anz -gt 0 ] && [ $anz == $oldanz ]
+		then
+			debugpost "Updaes Verfuegbar eine Email wurde bereits gesendet"
+			exit 0
+		else
+			debugpost "Keine Updates"
+			exit 0
 		fi
-	$emailcom -s "APT-Check: Fehler auf `hostname -f`" $emailto <<< "Es ist ein Fehler bei apt-get update aufgetreten!"
-	fi
+else
+	debugpost "apt-get update Fehler"
+	senemail "APT-Check: Fehler auf $servername" "Es ist ein Fehler bei apt-get aufgetreten."
 fi
