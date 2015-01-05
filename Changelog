@@ -3,8 +3,8 @@
 # From:	   Robert Bruckmueller         #
 # Email:   admin@mediadelivery.de      #
 # Web:     mediadelivery.de            #
-# Version: 1.6.0                       #
-# Date:    14.11.14                    #
+# Version: 1.6.1                       #
+# Date:    05.01.15                    #
 # License: GPL v3                      #
 # http://www.gnu.org/copyleft/gpl.html #
 #                                      #
@@ -20,3 +20,4 @@
 # v1.4.2: Email From Problem fix
 # v1.5.0: add Config File
 # v1.6.0: ist mutt instaliert / neue log info / besser prüfung ob die befehle erfolgreich war
+# v1.6.1: Config dir Variable
